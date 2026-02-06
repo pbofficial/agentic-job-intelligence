@@ -1,0 +1,7 @@
+{
+  "us_canada_data_roles": {
+    "q": "(\"Data Product Manager\" OR \"Data Product Owner\" OR \"Technical Product Manager\" OR \"Senior Business Analyst\") ( (\"Canada\" \"Remote\") OR \"United States\" ) site:greenhouse.io OR site:lever.co OR site:ashbyhq.com -intitle:Director",
+    "num": 20,
+    "tbs": "qdr:d2"
+  }
+}

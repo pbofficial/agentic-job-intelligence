@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+.env.production
+.env.local
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+
+# IDE / Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# n8n specific
+.n8n/
+n8n-local-binary/
+
+# Personal Data / Resume PII
+# We ignore the actual text files containing your private info,
+# but we keep the folder structure so users know where to put theirs.
+config/resumes/*.txt
+config/resumes/*.json
+config/resumes/*.pdf
+!config/resumes/.gitkeep
+
+# Testing / Mock Data
+# Ignore downloaded test files or temp exports
+tests/temp/
+*.tmp
+
+# Documentation assets (Optional - keep if you want screenshots in repo)
+# assets/

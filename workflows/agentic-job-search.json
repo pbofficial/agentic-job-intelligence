@@ -1,0 +1,1435 @@
+{
+  "name": "agentic-job-search-tailored-data",
+  "nodes": [
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        848,
+        832
+      ],
+      "id": "c9c9b811-6556-455a-a405-d0c9ff60dedc",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Access the organic results array directly from the input\nconst results = $input.first().json.organic;\n\nif (!results || results.length === 0) return [];\n\nreturn results.map(item => {\n  let company = \"Unknown\";\n  let platform = \"Other\"; \n  let location = \"Unknown\"; // 📍 NEW FIELD\n\n  const urlString = item.link || \"\"; \n  const rawTitle = item.title || \"\";\n  const snippet = item.snippet || \"\";\n\n  // 1. Manually extract the hostname\n  let hostname = \"\";\n  if (urlString.includes(\"//\")) {\n    hostname = urlString.split(\"//\")[1].split(\"/\")[0].toLowerCase();\n  }\n\n  // --- LOCATION DETECTIVE (NEW LOGIC) ---\n  // Strategy: Google often formats snippets as \"Location: City, State\" or \"Remote in Canada\"\n  \n  // A. Check for explicit \"Location:\" label in snippet\n  const locMatch = snippet.match(/Location:\\s*([^.\\n|]+)/i);\n  if (locMatch && locMatch[1]) {\n    location = locMatch[1].trim();\n  }\n  // B. Check for explicit \"Remote\" or \"Hybrid\" keywords if no city found\n  else if (snippet.toLowerCase().includes(\"remote\")) {\n    location = \"Remote\";\n  }\n  else if (snippet.toLowerCase().includes(\"hybrid\")) {\n    location = \"Hybrid\";\n  }\n  // C. Fallback: Check if Title ends with location (e.g., \"Data Analyst - Austin, TX\")\n  else if (rawTitle.includes(\" - \")) {\n    const parts = rawTitle.split(\" - \");\n    const potentialLoc = parts[parts.length - 1];\n    // If the last part is short (likely a city/state, not a tagline), use it\n    if (potentialLoc.length < 25 && !potentialLoc.includes(\"Apply\")) {\n      location = potentialLoc.trim();\n    }\n  }\n\n  // --- PLATFORM & COMPANY EXTRACTION ---\n\n  // 2. SUBDOMAIN-BASED ATS\n  if (hostname.includes(\"myworkdayjobs.com\")) {\n    company = hostname.split('.')[0]; \n    platform = \"Workday\";\n  } \n  else if (hostname.includes(\"taleo.net\")) {\n    company = hostname.split('.')[0];\n    platform = \"Taleo\";\n  }\n  else if (hostname.includes(\"icims.com\")) {\n    company = hostname.split('.')[0];\n    platform = \"iCIMS\";\n  }\n\n  // 3. PATH-BASED ATS\n  else if (hostname.includes(\"greenhouse.io\")) {\n    const pathParts = urlString.split(\"//\")[1].split(\"/\");\n    company = pathParts[1] === \"embed\" ? pathParts[2] : pathParts[1];\n    platform = \"Greenhouse\";\n  }\n  else if (hostname.includes(\"lever.co\")) {\n    const pathParts = urlString.split(\"//\")[1].split(\"/\");\n    company = pathParts[1] === \"embed\" ? pathParts[2] : pathParts[1];\n    platform = \"Lever\";\n  }\n  else if (hostname.includes(\"ashbyhq.com\")) {\n    const pathParts = urlString.split(\"//\")[1].split(\"/\");\n    company = pathParts[1] === \"embed\" ? pathParts[2] : pathParts[1];\n    platform = \"Ashby\";\n  }\n  else if (hostname.includes(\"jobvite.com\")) {\n    const parts = urlString.split(\"jobvite.com/\");\n    if (parts[1]) company = parts[1].split(\"/\")[0];\n    platform = \"Jobvite\";\n  }\n\n  // 4. NEW PORTALS\n  else if (hostname.includes(\"smartrecruiters.com\")) platform = \"SmartRecruiters\";\n  else if (hostname.includes(\"jobright.ai\")) platform = \"JobRight\";\n  else if (hostname.includes(\"wellfound.com\")) platform = \"Wellfound\";\n  else if (hostname.includes(\"himalayas.app\")) platform = \"Himalayas\";\n  else if (hostname.includes(\"builtin.com\")) platform = \"BuiltIn\";\n\n  // 5. COMPANY FALLBACK\n  if (company === \"Unknown\" || !company) {\n    if (rawTitle.includes(\" at \")) {\n      company = rawTitle.split(\" at \").pop().trim();\n    } else {\n      company = hostname.replace(\"www.\", \"\").split(\".\")[0];\n    }\n  }\n\n  // --- CLEANUP ---\n  company = decodeURIComponent(company).replace(\"jobs-\", \"\").replace(\"careers-\", \"\").replace(\"-careers\", \"\").replace(/-/g, \" \");\n  company = company.charAt(0).toUpperCase() + company.slice(1);\n\n  return {\n    title: rawTitle.split(\" at \")[0].split(\" - \")[0].trim(),\n    company: company,\n    platform: platform,\n    location: location, // 📍 Added to Output\n    url: urlString,\n    snippet: snippet,\n    date_posted_text: item.date || \"Unknown\", \n    date_found: new Date().toISOString().split('T')[0]\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        480
+      ],
+      "id": "1b286b0a-916f-4a79-8a03-4dfab8d5e985",
+      "name": "Extract Postings"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "list",
+          "cachedResultName": "Job_Search_Database",
+          "cachedResultUrl": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": ""
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Job_Hash",
+              "lookupValue": "={{ $json.data }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        320,
+        560
+      ],
+      "id": "2fd623f5-3370-46e9-aa01-b0c8025ee852",
+      "name": "Query Job Search Database",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "value": "={{ $json.company }}{{ $json.title }}"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        96,
+        480
+      ],
+      "id": "82eecf1e-f2f0-409c-b36a-1b67da5dd2df",
+      "name": "Generate MD5 Hash"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Role: {{ $json.title }}\nCompany: {{ $json.company }}\nURL: {{ $json.url }}\nJob Hash: {{ $json.data }}\n\nJob Description / Snippet:\n{{ $json.snippet }}",
+        "options": {
+          "systemMessage": "You are an expert Recruitment Architect. Your goal is to evaluate a Job Description (JD) for a specific high-value candidate.\n\n### 1. THE CANDIDATE PROFILE (THE \"HYBRID\" SPLIT)\n* **Legal Status:** [INSERT VISA STATUS] (Valid EAD card held). Does NOT require sponsorship.\n* **Experience Architecture:**\n    * **Total Professional:** 8+ Years.\n    * **Product & Strategy:** 3+ Years (Recent focus: Roadmap, ROI, Stakeholder Mgmt).\n    * **Big Data Engineering:** 5+ Years (Foundational focus: Snowflake, AWS, Spark, ETL).\n* **Strategic Assets:** [INSERT MBA/DEGREE] graduate. Domain expertise in Wealth Management ([INSERT DOMAIN EXPERTISE]) and Media (Comscore).\n* **Target Roles:** Data Product Manager, Data Product Owner, Data Strategist, or Senior Business Analyst.\n\n### 2. CLASSIFICATION LOGIC\nAnalyze the JD and assign one of these categories:\n* **Data Product Manager:** Focuses on roadmaps, ROI, and \"what to build.\"\n* **Data Product Owner:** Focuses on backlog grooming, user stories, and Agile execution.\n* **Data Business Analyst:** Focuses on SQL, requirements gathering, and dashboarding.\n* **Data Strategy:** Focuses on governance, operating models, and frameworks.\n* **Mismatch:** If it doesn't fit the above (e.g., Pure Sales, Marketing, General HR).\n\n### 3. THE \"GATEKEEPER\" RULES (CRITICAL)\nIf any of these rules are violated, set `match_score` to 0 immediately.\n\n* **Rule A: Legal & Industry Exclusion**\n    * **REJECT**: Any role requiring \"US Citizenship,\" \"Security Clearance,\" or \"Public Trust.\"\n    * **REJECT**: Any role within Federal Government, Defense/Aerospace, or Healthcare/Clinical sectors.\n    \n* **Rule B: Contextual Seniority (The \"3 vs 5\" Logic)**\n    * **REJECT (Too Junior):** Any role asking for <3 years total experience.\n    * **REJECT (Too Senior - Pure Product):** If the JD specifically demands **>6 years of Product Management** experience (She has 3+, so 7+ is a disqualifier).\n    * **ACCEPT (Senior - Technical/Total):** If the JD asks for \"7-10 years of experience\" generally, or \"Expertise in Data,\" **ACCEPT**. Her combined 8 years makes her a fit here.\n    * **REJECT (Title Mismatch):** \"Director,\" \"VP,\" or \"Head of\" (unless for a small team/startup).\n\n* **Rule C: Strategic Technical vs. Backend Coding**\n    * **REJECT**: If the role is for a \"Software Engineer\" or requires >50% hands-on application coding (Java/C++).\n    * **ACCEPT & BOOST**: If the role requires Data Engineering knowledge to lead teams. Her 5 years of engineering is a \"Superpower\" for a PM role.\n\n* **Rule D: Location Enforcement**\n    * **REJECT**: Non-US/Canada locations or \"Remote\" restricted to other countries.\n\n### 4. SCORING BOOSTERS\n* **The \"Unicorn\" Bonus (+20 Points):** If the JD asks for a \"Product Manager who can write SQL\" or \"Technical PM.\" (This is her perfect fit).\n* **Industry Bonus (+15 Points):** Wealth Management, Fintech, Banking, Media Analytics.\n* **Skill Bonus (+10 Points):** Snowflake, AWS, Alteryx, Databricks.\n* **Data Mesh Bonus (+10 Points):** Mentions of \"Data Products,\" \"Data Contracts,\" or \"Self-Service.\"\n\n### 5. OUTPUT FORMAT\nReturn ONLY a valid JSON object with no markdown formatting.\n{\n  \"category\": \"Data PM\" | \"Data PO\" | \"Data BA\" | \"Data Strategy\" | \"Mismatch\",\n  \"match_score\": number (0-100),\n  \"years_required_text\": \"The exact years mentioned in JD\",\n  \"justification\": \"Explain how it fits the 3yr Product / 8yr Total split\",\n  \"pitch\": \"A 1-sentence hook connecting her [INSERT MBA/DEGREE] and Tech background to the role\",\n  \"resume_focus\": \"Comma-separated list of skills to highlight\",\n  \"baseline_resume_recommendation\": \"Data PM\" | \"Data Strategy\" | \"Business Analyst\",\n\"job_hash\": {{ $json.data }}\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        768,
+        608
+      ],
+      "id": "5b07578c-211e-4f51-9e48-95cd72dc03ae",
+      "name": "AI - Is Job Relevant?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ⚙️ MODE MUST BE: \"Run Once for Each Item\"\n\n// 1. Get the raw text from the CURRENT item ($json)\nconst raw = $json.output || \"\";\n\n// 2. Safety Check: If AI failed to reply\nif (!raw) {\n  return { json: { error: \"No output from AI\", category: \"Mismatch\" } };\n}\n\n// 3. Clean Markdown (Remove ```json and ```)\nconst cleaned = raw.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n\ntry {\n  // 4. Parse the clean string\n  const parsed = JSON.parse(cleaned);\n  \n  // 5. Return the clean object (n8n will automatically combine all 18 results)\n  return { json: parsed };\n\n} catch (e) {\n  // 6. Handle broken JSON\n  return { \n    json: { \n      error: \"JSON Parse Failed\", \n      rawText: raw,\n      category: \"Mismatch\",\n      match_score: 0\n    } \n  };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        608
+      ],
+      "id": "99695d7e-8ee5-47a3-9325-80533e75387c",
+      "name": "Extract LLM Values"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "list",
+          "cachedResultName": "Job_Search_Database",
+          "cachedResultUrl": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Job_Hash": "={{ $json.data }}",
+            "Company": "={{ $json.company }}",
+            "Title": "={{ $json.title }}",
+            "Category": "={{ $json.category }}",
+            "Match_Score": "={{ $json.match_score }}",
+            "Pitch": "={{ $json.pitch }}",
+            "Resume Focus": "={{ $json.resume_focus }}",
+            "URL": "={{ $json.url }}",
+            "Date_Found": "={{ $json.date_found }}",
+            "Justification": "={{ $json.justification }}",
+            "Source": "={{ $json.platform }}",
+            "Status": "New Lead",
+            "Date_Posted": "={{ $json.date_posted_text }}",
+            "Location": "={{ $json.location }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Job_Hash",
+              "displayName": "Job_Hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date_Found",
+              "displayName": "Date_Found",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date_Posted",
+              "displayName": "Date_Posted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Match_Score",
+              "displayName": "Match_Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Justification",
+              "displayName": "Justification",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Pitch",
+              "displayName": "Pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Resume Focus",
+              "displayName": "Resume Focus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tailored Summary",
+              "displayName": "Tailored Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Enhanced Bullets",
+              "displayName": "Enhanced Bullets",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Action Plan",
+              "displayName": "Action Plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Critical Gaps",
+              "displayName": "Critical Gaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Match Verdict",
+              "displayName": "Match Verdict",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1568,
+        480
+      ],
+      "id": "8159171a-819d-40ba-a1f9-b3475a523632",
+      "name": "Update Job Search Database",
+      "credentials": {
+        "googleApi": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "data",
+              "field2": "Job_Hash"
+            }
+          ]
+        },
+        "joinMode": "keepNonMatches",
+        "outputDataFrom": "input1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        544,
+        480
+      ],
+      "id": "6b2805fd-c159-4dcb-9dd8-488bc4a21e11",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ⚙️ CONFIGURATION\nconst MAX_PAGES = 5; // Fetch up to 10 pages (approx 30-100 results)\nconst API_KEY = ''; // ⚠️ Paste your API Key here\nconst QUERY_JSON = {\n  // 1. LOGIC UPDATES:\n  // - Added \"Technical Product Manager\" (Perfect for your Eng+MBA background)\n  // - Changed \"Business Analyst\" to \"Senior Business Analyst\" OR \"Technical Business Analyst\" (To avoid entry-level noise)\n  // - Added Enterprise ATS: Taleo, iCIMS, Jobvite (Crucial for Banking/Wealth Management roles)\n  // - REMOVED \"-intitle:Lead\" (8 years experience qualifies you for Lead roles)\n  \n  \"q\": \"(\\\"Data Product Manager\\\" OR \\\"Data Product Owner\\\" OR \\\"Technical Product Manager\\\" OR \\\"Senior Business Analyst\\\" OR \\\"Technical Business Analyst\\\" OR \\\"Data Strategist\\\") ( (\\\"Canada\\\" \\\"Remote\\\") OR \\\"United States\\\" ) site:greenhouse.io OR site:lever.co OR site:ashbyhq.com OR site:myworkdayjobs.com OR site:smartrecruiters.com OR site:jobright.ai OR site:wellfound.com OR site:builtin.com OR site:himalayas.app OR site:taleo.net OR site:icims.com OR site:jobvite.com -intitle:Director -intitle:VP -intitle:Principal -intitle:Intern -intitle:Junior -intitle:\\\"Entry Level\\\" -intitle:Staff -intitle:Head\",\n  \n  \"num\": 20, \n  \"tbs\": \"qdr:d2\", // Past 2 days\n  \"gl\": \"us\", // Prioritizes US-based weighting (optional since your query is explicit)\n  \"hl\": \"en\"\n};\n\n// 🏗️ EXECUTION LOGIC\nlet allJobs = [];\n\nfor (let i = 0; i <= MAX_PAGES; i++) {\n  // Update the 'page' parameter for Serper (1, 11, 21 usually, but Serper uses 'page' index)\n  // Serper API typically uses \"page\" or \"start\". We will use \"page\".\n  const payload = {\n    ...QUERY_JSON,\n    page: i + 1 \n  };\n\n  try {\n    // Perform the API Call directly from JavaScript\n    const response = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://google.serper.dev/search',\n      headers: {\n        'X-API-KEY': API_KEY,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify(payload),\n      json: true\n    });\n\n    // Extract organic results\n    const pageResults = response.organic || [];\n    \n    // Stop if no results found on this page\n    if (pageResults.length === 0) break;\n\n    allJobs = allJobs.concat(pageResults);\n    \n    // Optional: Small delay to be polite to the API\n    await new Promise(r => setTimeout(r, 500));\n\n  } catch (error) {\n    console.log(`Error fetching page ${i + 1}:`, error);\n    break; // Stop loop on error\n  }\n}\n\n// 🧹 DEDUPLICATION (Safety Net)\n// Sometimes Google shows the same job on Page 1 and Page 2. We remove duplicates by Link.\nconst uniqueJobs = [];\nconst seenUrls = new Set();\n\nfor (const job of allJobs) {\n  if (!seenUrls.has(job.link)) {\n    seenUrls.add(job.link);\n    uniqueJobs.push(job);\n  }\n}\n\n// Return the clean list to your next node\nreturn [{ json: { organic: uniqueJobs } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        480
+      ],
+      "id": "972b6d7c-a26e-48af-9145-e890c92a55b8",
+      "name": "Query Serper to get Job Postings"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Category }}",
+                    "rightValue": "Manager",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "e6db65a7-8325-4c1e-a863-0b7f8b873a0d"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "manager"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f2baa412-e756-49d4-8831-fb2cbbce7788",
+                    "leftValue": "={{ $json.Category }}",
+                    "rightValue": "Owner",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "owner"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2510fb1a-4d77-4def-902e-2a0e617443f2",
+                    "leftValue": "={{ $json.Category }}",
+                    "rightValue": "Strategy",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "strategy"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2016,
+        448
+      ],
+      "id": "e697e100-fa93-4929-ad0c-b9203141ace0",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f93fc5bf-ebbd-421a-8bde-188b47374e63",
+              "name": "resume_pm_text",
+              "value": "enter resume text for product manager/owner here...",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2240,
+        -128
+      ],
+      "id": "b6f2907c-8286-4834-b7b4-1387999d57fb",
+      "name": "Set Resume - Product Manager"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f93fc5bf-ebbd-421a-8bde-188b47374e63",
+              "name": "resume_pm_text",
+              "value": "enter resume text for product master here...",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2240,
+        288
+      ],
+      "id": "190e0638-e907-47da-9b87-b0aec83bfc23",
+      "name": "Set Resume - Product Owner"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "51891a59-813f-4144-af05-93d5966842d5",
+              "name": "resume_ba_text",
+              "value": "enter resume text for business analyst here...",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2240,
+        1088
+      ],
+      "id": "51e1c96e-7e94-45ec-8786-251e507f8cb3",
+      "name": "Set Resume - Business Analyst"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=This is her current resume - {{ $json.resume_pm_text }}\n\nThese are the job parameters that she is applying for - \n1. Resume Focus - {{ $json[\"Resume Focus\"] }}\n2. Pitch - {{ $json.Pitch }}\n3. Justification - {{ $json.Justification }}\n5. Category - {{ $json.Category }}\n6. Job Title - {{ $json.Title }}\n",
+        "options": {
+          "systemMessage": "=You are a Senior Resume Strategist and Career Coach. You are optimizing a candidate's resume ([INSERT MBA/DEGREE], 8 Yrs Data Engineering/Product) for a specific Job Description (JD).\n\n### 🛑 STRICT CONSTRAINTS\n1. **NO HALLUCINATIONS:** Do not invent skills she doesn't have.\n2. **TONE:** Professional, confident, but grounded. **Do NOT start the summary with her degree (e.g., \"[INSERT MBA/DEGREE]\").** Start with her professional identity (e.g., \"Senior Data Product Manager with 8+ years of...\"). The MBA is a supporting fact, not the headline.\n3. **ROLE PHYSICS (Enforce the \"Gravity\" of the specific role):**\n   - **Data PM:** Focus on \"Shipping,\" \"Roadmap,\" \"ROI,\" \"User Needs,\" \"Market Fit.\"\n   - **Product Owner:** Focus on \"Backlog Management,\" \"User Stories,\" \"Sprint Planning,\" \"Agile Ceremonies,\" \"Acceptance Criteria.\"\n   - **Data Product:** Focus on \"Data as a Product,\" \"Data Contracts,\" \"SLAs,\" \"Data Mesh.\"\n   - **Data Strategy:** Focus on \"Governance,\" \"Modernization,\" \"Frameworks.\"\n   - **BA:** Focus on \"Requirements,\" \"Stakeholder Alignment,\" \"SQL,\" \"Process Mapping.\"\n\n### TASK 1: THE PROFESSIONAL SUMMARY\nRewrite her summary to be high-impact but humble.\n* **Structure:** [Role/Years] + [Core Value Prop] + [Specialization].\n* **Example:** \"Senior Data Product Owner with over 8 years of experience building scalable data platforms and ensuring high-quality data consumption for enterprise analytics...\"\n* **Keywords:** Integrate 3 top keywords from the JD naturally.\n\n### TASK 2: EVIDENCE-BASED ENHANCEMENT\nSelect 3 bullet points from her background that best align with this JD. Rewrite them to be:\n* **Action-Oriented:** Use strong verbs (Orchestrated, Deployed, Engineered, Evangelized).\n* **Metric-Heavy:** Highlight her $180M revenue impact or 10% efficiency gains.\n\n### TASK 3: THE \"TAILORING ACTION PLAN\" (CRITICAL)\nInstead of just listing gaps, provide specific **\"Patches\"** she can copy-paste to fix them.\n* If she lacks a specific tool (e.g., \"Jira\"), but has used similar ones, tell her exactly where to add it or how to phrase her transferrable skill.\n* If the JD loves \"Agile Ceremonies,\" tell her: \"In the Skills section, change 'Project Management' to 'Agile Methodologies (Scrum/Kanban)'.\"\n\n### OUTPUT FORMAT (JSON ONLY)\n{\n  \"tailored_summary\": \"Revised summary text...\",\n  \"enhanced_bullets\": [\n    \"Bullet 1...\",\n    \"Bullet 2...\",\n    \"Bullet 3...\"\n  ],\n  \"critical_gaps\": \"Brief list of true missing skills that she cannot fake.\",\n  \"tailoring_action_plan\": [\n    {\n      \"section\": \"Skills Section\",\n      \"instruction\": \"Add 'Internal Operations' to your core competencies list.\",\n      \"suggested_text\": \"Core Competencies: Internal Systems Optimization, Workflow Automation\"\n    },\n    {\n      \"section\": \"[INSERT DOMAIN EXPERTISE] Experience\",\n      \"instruction\": \"The JD emphasizes 'Cross-functional leadership'. Update your headline to reflect this.\",\n      \"suggested_text\": \"Change headline to: 'Lead Business Analyst | Cross-Functional Data Strategy'\"\n    }\n  ],\n  \"match_verdict\": \"High/Medium/Low\",\n\"job_hash\": {{ $json.Job_Hash }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2464,
+        -224
+      ],
+      "id": "4ad13f07-0767-46f4-92b9-7bf778848992",
+      "name": "Agent for Product Manager"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=This is her current resume - {{ $json.resume_pm_text }}\n\nThese are the job parameters that she is applying for - \n1. Resume Focus - {{ $json[\"Resume Focus\"] }}\n2. Pitch - {{ $json.Pitch }}\n3. Justification - {{ $json.Justification }}\n5. Category - {{ $json.Category }}\n6. Job Title - {{ $json.Title }}\n",
+        "options": {
+          "systemMessage": "=You are a Senior Resume Strategist and Career Coach. You are optimizing a candidate's resume ([INSERT MBA/DEGREE], 8 Yrs Data Engineering/Product) for a specific Job Description (JD).\n\n### 🛑 STRICT CONSTRAINTS\n1. **NO HALLUCINATIONS:** Do not invent skills she doesn't have.\n2. **TONE:** Professional, confident, but grounded. **Do NOT start the summary with her degree (e.g., \"[INSERT MBA/DEGREE]\").** Start with her professional identity (e.g., \"Senior Data Product Manager with 8+ years of...\"). The MBA is a supporting fact, not the headline.\n3. **ROLE PHYSICS (Enforce the \"Gravity\" of the specific role):**\n   - **Data PM:** Focus on \"Shipping,\" \"Roadmap,\" \"ROI,\" \"User Needs,\" \"Market Fit.\"\n   - **Product Owner:** Focus on \"Backlog Management,\" \"User Stories,\" \"Sprint Planning,\" \"Agile Ceremonies,\" \"Acceptance Criteria.\"\n   - **Data Product:** Focus on \"Data as a Product,\" \"Data Contracts,\" \"SLAs,\" \"Data Mesh.\"\n   - **Data Strategy:** Focus on \"Governance,\" \"Modernization,\" \"Frameworks.\"\n   - **BA:** Focus on \"Requirements,\" \"Stakeholder Alignment,\" \"SQL,\" \"Process Mapping.\"\n\n### TASK 1: THE PROFESSIONAL SUMMARY\nRewrite her summary to be high-impact but humble.\n* **Structure:** [Role/Years] + [Core Value Prop] + [Specialization].\n* **Example:** \"Senior Data Product Owner with over 8 years of experience building scalable data platforms and ensuring high-quality data consumption for enterprise analytics...\"\n* **Keywords:** Integrate 3 top keywords from the JD naturally.\n\n### TASK 2: EVIDENCE-BASED ENHANCEMENT\nSelect 3 bullet points from her background that best align with this JD. Rewrite them to be:\n* **Action-Oriented:** Use strong verbs (Orchestrated, Deployed, Engineered, Evangelized).\n* **Metric-Heavy:** Highlight her $180M revenue impact or 10% efficiency gains.\n\n### TASK 3: THE \"TAILORING ACTION PLAN\" (CRITICAL)\nInstead of just listing gaps, provide specific **\"Patches\"** she can copy-paste to fix them.\n* If she lacks a specific tool (e.g., \"Jira\"), but has used similar ones, tell her exactly where to add it or how to phrase her transferrable skill.\n* If the JD loves \"Agile Ceremonies,\" tell her: \"In the Skills section, change 'Project Management' to 'Agile Methodologies (Scrum/Kanban)'.\"\n\n### OUTPUT FORMAT (JSON ONLY)\n{\n  \"tailored_summary\": \"Revised summary text...\",\n  \"enhanced_bullets\": [\n    \"Bullet 1...\",\n    \"Bullet 2...\",\n    \"Bullet 3...\"\n  ],\n  \"critical_gaps\": \"Brief list of true missing skills that she cannot fake.\",\n  \"tailoring_action_plan\": [\n    {\n      \"section\": \"Skills Section\",\n      \"instruction\": \"Add 'Internal Operations' to your core competencies list.\",\n      \"suggested_text\": \"Core Competencies: Internal Systems Optimization, Workflow Automation\"\n    },\n    {\n      \"section\": \"[INSERT DOMAIN EXPERTISE] Experience\",\n      \"instruction\": \"The JD emphasizes 'Cross-functional leadership'. Update your headline to reflect this.\",\n      \"suggested_text\": \"Change headline to: 'Lead Business Analyst | Cross-Functional Data Strategy'\"\n    }\n  ],\n  \"match_verdict\": \"High/Medium/Low\",\n\"job_hash\": \n{{ $json.Job_Hash }} }"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2464,
+        176
+      ],
+      "id": "0de33b45-4234-4432-a08d-da3d1123b742",
+      "name": "Agent for Product Owner"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=This is her current resume (sharing both product manager/owner + business analyst ones) - \n\n1. Product Manager/Owner - {{ $json.resume_pm_text }}\n2. Business Analyst - {{ $json.resume_ba_text }}\n\nThese are the job parameters that she is applying for - \n1. Resume Focus - {{ $json[\"Resume Focus\"] }}\n2. Pitch - {{ $json.Pitch }}\n3. Justification - {{ $json.Justification }}\n5. Category - {{ $json.Category }}\n6. Job Title - {{ $json.Title }}\n",
+        "options": {
+          "systemMessage": "=You are a Senior Resume Strategist and Career Coach. You are optimizing a candidate's resume ([INSERT MBA/DEGREE], 8 Yrs Data Engineering/Product) for a specific Job Description (JD).\n\n### 🛑 STRICT CONSTRAINTS\n1. **NO HALLUCINATIONS:** Do not invent skills she doesn't have.\n2. **TONE:** Professional, confident, but grounded. **Do NOT start the summary with her degree (e.g., \"[INSERT MBA/DEGREE]\").** Start with her professional identity (e.g., \"Senior Data Product Manager with 8+ years of...\"). The MBA is a supporting fact, not the headline.\n3. **ROLE PHYSICS (Enforce the \"Gravity\" of the specific role):**\n   - **Data PM:** Focus on \"Shipping,\" \"Roadmap,\" \"ROI,\" \"User Needs,\" \"Market Fit.\"\n   - **Product Owner:** Focus on \"Backlog Management,\" \"User Stories,\" \"Sprint Planning,\" \"Agile Ceremonies,\" \"Acceptance Criteria.\"\n   - **Data Product:** Focus on \"Data as a Product,\" \"Data Contracts,\" \"SLAs,\" \"Data Mesh.\"\n   - **Data Strategy:** Focus on \"Governance,\" \"Modernization,\" \"Frameworks.\"\n   - **BA:** Focus on \"Requirements,\" \"Stakeholder Alignment,\" \"SQL,\" \"Process Mapping.\"\n\n### TASK 1: THE PROFESSIONAL SUMMARY\nRewrite her summary to be high-impact but humble.\n* **Structure:** [Role/Years] + [Core Value Prop] + [Specialization].\n* **Example:** \"Senior Data Product Owner with over 8 years of experience building scalable data platforms and ensuring high-quality data consumption for enterprise analytics...\"\n* **Keywords:** Integrate 3 top keywords from the JD naturally.\n\n### TASK 2: EVIDENCE-BASED ENHANCEMENT\nSelect 3 bullet points from her background that best align with this JD. Rewrite them to be:\n* **Action-Oriented:** Use strong verbs (Orchestrated, Deployed, Engineered, Evangelized).\n* **Metric-Heavy:** Highlight her $180M revenue impact or 10% efficiency gains.\n\n### TASK 3: THE \"TAILORING ACTION PLAN\" (CRITICAL)\nInstead of just listing gaps, provide specific **\"Patches\"** she can copy-paste to fix them.\n* If she lacks a specific tool (e.g., \"Jira\"), but has used similar ones, tell her exactly where to add it or how to phrase her transferrable skill.\n* If the JD loves \"Agile Ceremonies,\" tell her: \"In the Skills section, change 'Project Management' to 'Agile Methodologies (Scrum/Kanban)'.\"\n\n### OUTPUT FORMAT (JSON ONLY)\n{\n  \"tailored_summary\": \"Revised summary text...\",\n  \"enhanced_bullets\": [\n    \"Bullet 1...\",\n    \"Bullet 2...\",\n    \"Bullet 3...\"\n  ],\n  \"critical_gaps\": \"Brief list of true missing skills that she cannot fake.\",\n  \"tailoring_action_plan\": [\n    {\n      \"section\": \"Skills Section\",\n      \"instruction\": \"Add 'Internal Operations' to your core competencies list.\",\n      \"suggested_text\": \"Core Competencies: Internal Systems Optimization, Workflow Automation\"\n    },\n    {\n      \"section\": \"[INSERT DOMAIN EXPERTISE] Experience\",\n      \"instruction\": \"The JD emphasizes 'Cross-functional leadership'. Update your headline to reflect this.\",\n      \"suggested_text\": \"Change headline to: 'Lead Business Analyst | Cross-Functional Data Strategy'\"\n    }\n  ],\n  \"match_verdict\": \"High/Medium/Low\",\n\"job_hash\": {{ $json.Job_Hash }}\n} "
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2464,
+        576
+      ],
+      "id": "ca5e3157-8e50-4794-9c85-85d10fb99a58",
+      "name": "Agent for Product/Data Strategy"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=This is her current resume - {{ $json.resume_ba_text }}\n\nThese are the job parameters that she is applying for - \n1. Resume Focus - {{ $json[\"Resume Focus\"] }}\n2. Pitch - {{ $json.Pitch }}\n3. Justification - {{ $json.Justification }}\n5. Category - {{ $json.Category }}\n6. Job Title - {{ $json.Title }}\n",
+        "options": {
+          "systemMessage": "=You are a Senior Resume Strategist and Career Coach. You are optimizing a candidate's resume ([INSERT MBA/DEGREE], 8 Yrs Data Engineering/Product) for a specific Job Description (JD).\n\n### 🛑 STRICT CONSTRAINTS\n1. **NO HALLUCINATIONS:** Do not invent skills she doesn't have.\n2. **TONE:** Professional, confident, but grounded. **Do NOT start the summary with her degree (e.g., \"[INSERT MBA/DEGREE]\").** Start with her professional identity (e.g., \"Senior Data Product Manager with 8+ years of...\"). The MBA is a supporting fact, not the headline.\n3. **ROLE PHYSICS (Enforce the \"Gravity\" of the specific role):**\n   - **Data PM:** Focus on \"Shipping,\" \"Roadmap,\" \"ROI,\" \"User Needs,\" \"Market Fit.\"\n   - **Product Owner:** Focus on \"Backlog Management,\" \"User Stories,\" \"Sprint Planning,\" \"Agile Ceremonies,\" \"Acceptance Criteria.\"\n   - **Data Product:** Focus on \"Data as a Product,\" \"Data Contracts,\" \"SLAs,\" \"Data Mesh.\"\n   - **Data Strategy:** Focus on \"Governance,\" \"Modernization,\" \"Frameworks.\"\n   - **BA:** Focus on \"Requirements,\" \"Stakeholder Alignment,\" \"SQL,\" \"Process Mapping.\"\n\n### TASK 1: THE PROFESSIONAL SUMMARY\nRewrite her summary to be high-impact but humble.\n* **Structure:** [Role/Years] + [Core Value Prop] + [Specialization].\n* **Example:** \"Senior Data Product Owner with over 8 years of experience building scalable data platforms and ensuring high-quality data consumption for enterprise analytics...\"\n* **Keywords:** Integrate 3 top keywords from the JD naturally.\n\n### TASK 2: EVIDENCE-BASED ENHANCEMENT\nSelect 3 bullet points from her background that best align with this JD. Rewrite them to be:\n* **Action-Oriented:** Use strong verbs (Orchestrated, Deployed, Engineered, Evangelized).\n* **Metric-Heavy:** Highlight her $180M revenue impact or 10% efficiency gains.\n\n### TASK 3: THE \"TAILORING ACTION PLAN\" (CRITICAL)\nInstead of just listing gaps, provide specific **\"Patches\"** she can copy-paste to fix them.\n* If she lacks a specific tool (e.g., \"Jira\"), but has used similar ones, tell her exactly where to add it or how to phrase her transferrable skill.\n* If the JD loves \"Agile Ceremonies,\" tell her: \"In the Skills section, change 'Project Management' to 'Agile Methodologies (Scrum/Kanban)'.\"\n\n### OUTPUT FORMAT (JSON ONLY)\n{\n  \"tailored_summary\": \"Revised summary text...\",\n  \"enhanced_bullets\": [\n    \"Bullet 1...\",\n    \"Bullet 2...\",\n    \"Bullet 3...\"\n  ],\n  \"critical_gaps\": \"Brief list of true missing skills that she cannot fake.\",\n  \"tailoring_action_plan\": [\n    {\n      \"section\": \"Skills Section\",\n      \"instruction\": \"Add 'Internal Operations' to your core competencies list.\",\n      \"suggested_text\": \"Core Competencies: Internal Systems Optimization, Workflow Automation\"\n    },\n    {\n      \"section\": \"[INSERT DOMAIN EXPERTISE] Experience\",\n      \"instruction\": \"The JD emphasizes 'Cross-functional leadership'. Update your headline to reflect this.\",\n      \"suggested_text\": \"Change headline to: 'Lead Business Analyst | Cross-Functional Data Strategy'\"\n    }\n  ],\n  \"match_verdict\": \"High/Medium/Low\",\n\"job_hash\": \n{{ $json.Job_Hash }}}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2464,
+        1088
+      ],
+      "id": "2b3a5f19-46a8-4cc6-94bc-979e584fc58b",
+      "name": "Agent for Business Analyst"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2544,
+        0
+      ],
+      "id": "0e0d5940-0d2c-48ef-9bc0-25177fdc824f",
+      "name": "Product Manager",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2544,
+        400
+      ],
+      "id": "b00a29ec-b7b0-4919-8801-88425e6b5bda",
+      "name": "Product Owner",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f93fc5bf-ebbd-421a-8bde-188b47374e63",
+              "name": "resume_pm_text",
+              "value": "enter resume text for product manager/owner here...",
+              "type": "string"
+            },
+            {
+              "id": "51891a59-813f-4144-af05-93d5966842d5",
+              "name": "resume_ba_text",
+              "value": "enter resume text for business analyst here...",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2240,
+        688
+      ],
+      "id": "d12c1e2a-8f00-4472-8785-95e98e2f355d",
+      "name": "Set Resume - Product/Data Strategy"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2544,
+        800
+      ],
+      "id": "6fdaf4e2-e9df-4e0e-a819-6b26958cfc26",
+      "name": "Strategy",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2544,
+        1312
+      ],
+      "id": "98ae453a-e714-462d-b58b-c19eec157b79",
+      "name": "Business Analyst",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6ec805d4-4b51-4cd1-9e7e-4eb4305d9479",
+              "leftValue": "={{ $json.Match_Score }}",
+              "rightValue": 75,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1792,
+        480
+      ],
+      "id": "715fda44-ac22-4a70-bce2-509a0196620d",
+      "name": "Filter Low Scores"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Get raw content from the AI node\nconst raw = $json.output || \"\"; \n\n// 2. Safety: If AI failed or returned empty\nif (!raw) {\n  return { json: { error: \"No output from AI\" } };\n}\n\n// 3. Clean Markdown\nconst cleaned = raw.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\n\ntry {\n  // 4. Parse into a real JSON Object\n  const parsed = JSON.parse(cleaned);\n\n  // 5. SERIALIZATION (Flattening Objects for Spreadsheet Cells)\n\n  // A. Format \"Enhanced Bullets\" (Handles both String and Object formats)\n  const bulletsFormatted = parsed.enhanced_bullets\n    ? parsed.enhanced_bullets.map(b => {\n        // Option 1: AI returned a simple string (Old behavior)\n        if (typeof b === 'string') return `• ${b}`;\n        \n        // Option 2: AI returned an Object (New behavior)\n        // We assume the keys are \"original_context\" and \"enhanced_bullet\"\n        const context = b.original_context || \"General\";\n        const text = b.enhanced_bullet || JSON.stringify(b); // Fallback if key is missing\n        return `• [${context}]: ${text}`; \n      }).join(\"\\n\\n\") \n    : \"\";\n\n  // B. Format \"Action Plan\" (Always an Object)\n  const actionPlanFormatted = parsed.tailoring_action_plan\n    ? parsed.tailoring_action_plan.map(item => \n        `[SECT: ${item.section || \"General\"}]\\n👉 ${item.instruction || \"\"}\\n📝 Suggestion: \"${item.suggested_text || \"\"}\"`\n      ).join(\"\\n\\n\") \n    : \"\";\n\n  // 6. Return the clean, flat object\n  return { \n    json: { \n      // Simple Strings (Pass through directly)\n      tailored_summary: parsed.tailored_summary,\n      critical_gaps: parsed.critical_gaps,\n      match_verdict: parsed.match_verdict,\n      job_hash: parsed.job_hash,\n\n      // Complex Arrays (Use the formatted versions)\n      enhanced_bullets: bulletsFormatted,      \n      action_plan: actionPlanFormatted        \n    } \n  };\n\n} catch (e) {\n  return { \n    json: { \n      error: \"JSON Parse Failed\", \n      raw_text: raw \n    } \n  };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        480
+      ],
+      "id": "b827a47a-6c12-4e27-8cdb-f0526645cf99",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2816,
+        448
+      ],
+      "id": "ac513400-0745-43b1-be34-32b4cbe80871",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "list",
+          "cachedResultName": "Job_Search_Database",
+          "cachedResultUrl": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Tailored Summary": "={{ $json.tailored_summary }}",
+            "Enhanced Bullets": "={{ $json.enhanced_bullets }}",
+            "Action Plan": "={{ $json.action_plan }}",
+            "Critical Gaps": "={{ $json.critical_gaps }}",
+            "Match Verdict": "={{ $json.match_verdict }}",
+            "Job_Hash": "={{ $json.job_hash }}"
+          },
+          "matchingColumns": [
+            "Job_Hash"
+          ],
+          "schema": [
+            {
+              "id": "Job_Hash",
+              "displayName": "Job_Hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date_Found",
+              "displayName": "Date_Found",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date_Posted",
+              "displayName": "Date_Posted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Match_Score",
+              "displayName": "Match_Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Justification",
+              "displayName": "Justification",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pitch",
+              "displayName": "Pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resume Focus",
+              "displayName": "Resume Focus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tailored Summary",
+              "displayName": "Tailored Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Enhanced Bullets",
+              "displayName": "Enhanced Bullets",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Action Plan",
+              "displayName": "Action Plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Critical Gaps",
+              "displayName": "Critical Gaps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Match Verdict",
+              "displayName": "Match Verdict",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3264,
+        480
+      ],
+      "id": "7662f7cf-c659-4d17-9472-68c189f00ebe",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "job_hash",
+              "field2": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1344,
+        480
+      ],
+      "id": "3c3bf4bd-fb29-4e1c-ac9e-b801f7dcdf4a",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7,15,23 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -576,
+        480
+      ],
+      "id": "119771ae-eea0-4e1b-be15-475766f5585c",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI - Is Job Relevant?",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Postings": {
+      "main": [
+        [
+          {
+            "node": "Generate MD5 Hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Job Search Database": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Generate MD5 Hash": {
+      "main": [
+        [
+          {
+            "node": "Query Job Search Database",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI - Is Job Relevant?": {
+      "main": [
+        [
+          {
+            "node": "Extract LLM Values",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract LLM Values": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Serper to get Job Postings": {
+      "main": [
+        [
+          {
+            "node": "Extract Postings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "AI - Is Job Relevant?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Job Search Database": {
+      "main": [
+        [
+          {
+            "node": "Filter Low Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Set Resume - Product Manager",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Resume - Product Owner",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Resume - Product/Data Strategy",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Resume - Business Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Resume - Product Manager": {
+      "main": [
+        [
+          {
+            "node": "Agent for Product Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Resume - Product Owner": {
+      "main": [
+        [
+          {
+            "node": "Agent for Product Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Resume - Business Analyst": {
+      "main": [
+        [
+          {
+            "node": "Agent for Business Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Product Manager": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent for Product Manager",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Product Owner": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent for Product Owner",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Resume - Product/Data Strategy": {
+      "main": [
+        [
+          {
+            "node": "Agent for Product/Data Strategy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strategy": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent for Product/Data Strategy",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Analyst": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent for Business Analyst",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Low Scores": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent for Product Manager": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent for Product Owner": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Agent for Product/Data Strategy": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Agent for Business Analyst": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Update Job Search Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query Serper to get Job Postings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "8b219e0d-6d40-4db6-a8ea-bad05a26da48",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": ""
+  },
+  "id": "7aDh7FngJOSbJfzBlhnDu",
+  "tags": []
+}
